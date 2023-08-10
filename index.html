@@ -7,9 +7,9 @@
 
     </head>
     <body>
-        <button type="button" class="btn btn-primary" onclick="CheckRecentMatchUp(krtkoId);">Krtko</button>
-        <button type="button" class="btn btn-primary" onclick="CheckRecentMatchUp(walrusId);">Walrus</button>
-        <button type="button" class="btn btn-primary" onclick="CheckRecentMatchUp(goblinGooId);">Goblingoo</button>
+        <button type="button" class="btn btn-primary" onclick="RouteFindMatchUpsWithId(krtkoId);">Krtko</button>
+        <button type="button" class="btn btn-primary" onclick="RouteFindMatchUpsWithId(walrusId);">Walrus</button>
+        <button type="button" class="btn btn-primary" onclick="RouteFindMatchUpsWithId(goblinGooId);">Goblingoo</button>
         <input type="text" id="custom-id-input">
         <button type="button" class="btn btn-primary" onclick="CheckCustomId();">CustomId</button>
         <div id="win-results">
@@ -18,6 +18,9 @@
     </body>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm" crossorigin="anonymous"></script>
     <script>
+        /*
+        Constants
+         */
         //Parsing query commands
         const queryParams = new URLSearchParams(document.location.search);
         const userNameToLookUp = queryParams.get("u");
@@ -29,143 +32,390 @@
         const walrusId = 7287677;
         const goblinGooId = 7546983;
 
-        class MatchUpResults {
-            constructor(mainPlayerId, opponentPlayerId, opponentName, games) {
-                this.mainPlayerId = mainPlayerId;
-                this.opponentPlayerId = opponentPlayerId;
-                this.opponentName = opponentName;
-                this.games = games;
-            }
+        /*
+        Data classes
+         */
+        /**
+         * Enum for the status of a game
+         * @readonly
+         * @enum {string}
+         */
+        const GameStatus = {
+            PLAYING: "playing",
+            FINISHED: "finished",
         }
+
+        const NO_RESULTS_TEAM_ID = -2;
+        const STILL_PLAYING_TEAM_ID = -1;
+
+        /**
+         * @class Game
+         * @property id {number}
+         * @property status {GameStatus}
+         * @property duration {number}
+         * @property averageRating {number}
+         * @property kind {string}
+         * @property leaderboard {string}
+         * @property patchId {number}
+         * @property seasonNumber {number}
+         * @property server {number}
+         * @property teamIdWon {number}
+         * @property mapName {string}
+         * @property players {[Player]}
+         * @property startedAt {Date}
+         * @property updatedAt {Date}
+         */
         class Game {
-            constructor(id, didWin, startedAt) {
+            constructor(id, status, duration, averageRating,
+                        kind, leaderboard, patchId, seasonNumber, server, teamIdWon, mapName, players, startedAt, updatedAt) {
                 this.id = id;
-                this.didWin = didWin;
+                this.status = status;
+                this.duration = duration;
+                this.averageRating = averageRating;
+                this.kind = kind;
+                this.leaderboard = leaderboard;
+                this.patchId = patchId;
+                this.seasonNumber = seasonNumber;
+                this.server = server;
+                this.teamIdWon = teamIdWon;
+                this.mapName = mapName;
+                this.players = players;
                 this.startedAt = startedAt;
+                this.updatedAt = updatedAt;
             }
-        }
 
-        async function GetJsonOfRecentGames(playerId, limit) {
-            const apiUrl = `https://aoe4world.com/api/v0/players/${playerId}/games?limit=${limit}`;
-            const results = await fetch(apiUrl);
-            return await results.json();
-        }
-        async function GetJsonForMatchedGames(mainPlayerId, opponentPlayerId) {
-            const apiUrl = `https://aoe4world.com/api/v0/players/${mainPlayerId}/games?opponent_profile_id=${opponentPlayerId}`;
-            const results = await fetch(apiUrl);
-            return await results.json();
-        }
-        async function GetUserJsonFromExactUsername(username) {
-            const apiUrl = `https://aoe4world.com/api/v0/players/search?query=${username}&exact=true`;
-            const results = await fetch(apiUrl);
-            return await results.json();
-        }
-        async function GetUserJsonFromClosestUsername(username) {
-            const apiUrl = `https://aoe4world.com/api/v0/players/search?query=${username}&limit=1`;
-            const results = await fetch(apiUrl);
-            return await results.json();
-        }
-        async function FindUserByUsername(username) {
-            const exactJson = await GetUserJsonFromExactUsername(username);
-            if (exactJson.count !== 0) {
-                return exactJson.players[0];
+            /**
+             * @param player {Player}
+             * @return {boolean}
+             */
+            didPlayerWin(player) {
+                let usingTeamId = player.teamId;
+                if (usingTeamId < 0) {
+                    const foundPlayer = this.getPlayerById(player.id);
+                    if (foundPlayer == null) {
+                        throw new Error(`Player ${player.id} is not in this game`);
+                    }
+                    usingTeamId = foundPlayer.teamId;
+                }
+                return this.teamIdWon === usingTeamId;
             }
-            const closestJson = await GetUserJsonFromClosestUsername(username);
-            if (closestJson.count !== 0) {
-                return closestJson.players[0];
+
+            /**
+             * @param playerId {number}
+             * @returns {Player|null}
+             */
+            getPlayerById(playerId) {
+                for (let i = 0; i < this.players.length; i++) {
+                    if (this.players[i].id === playerId) {
+                        return this.players[i];
+                    }
+                }
+                return null;
             }
-            return null;
-        }
-        async function GetMatchUpResults(mainPlayerId, opponentPlayerId) {
-            const results = await GetJsonForMatchedGames(mainPlayerId, opponentPlayerId);
-            const games = [];
-            let opponentName = "NotFound";
-            for (let i = 0; i < results.games.length; i++) {
-                const game = results.games[i];
-                const teams = game.teams;
-                let didWin = false;
-                for (let teamIndex = 0; teamIndex < teams.length; teamIndex++) {
-                    const innerTeam = teams[teamIndex];
-                    for (let innerTeamIndex = 0; innerTeamIndex < innerTeam.length; innerTeamIndex++) {
-                        const member = innerTeam[innerTeamIndex].player;
-                        if (member.profile_id === mainPlayerId) {
-                            didWin = member.result === "win";
-                        }
-                        if (member.profile_id === opponentPlayerId) {
-                            opponentName = member.name;
+
+            /**
+             *
+             * @param jsonData {{}}
+             * @returns {Game}
+             * @constructor
+             */
+            static FromJson(jsonData) {
+                let gameStatus = GameStatus.PLAYING;
+                const players = [];
+                let whoWon = STILL_PLAYING_TEAM_ID;
+                let foundWhoWon = false;
+                for (let i = 0; i < jsonData.teams.length; i++) {
+                    for (let playerIndex = 0; playerIndex < jsonData.teams[i].length; playerIndex++) {
+                        const playerJson = jsonData.teams[i][playerIndex].player;
+                        const p = Player.FromJson(i, playerJson);
+                        players.push(p);
+
+                        if (foundWhoWon === false) {
+                            if (playerJson.result === "win") {
+                                foundWhoWon = true;
+                                gameStatus = GameStatus.FINISHED;
+                                whoWon = i;
+                            } else if (playerJson.result === "noresult") {
+                                foundWhoWon = true;
+                                whoWon = NO_RESULTS_TEAM_ID;
+                                gameStatus = GameStatus.FINISHED;
+                            }
                         }
                     }
                 }
-                games.push(new Game(game.game_id, didWin, Date.parse(game.started_at)));
+                return new Game(
+                    jsonData.game_id,
+                    gameStatus,
+                    jsonData.duration,
+                    jsonData.average_rating,
+                    jsonData.kind,
+                    jsonData.leaderboard,
+                    jsonData.patch,
+                    jsonData.season,
+                    jsonData.server,
+                    whoWon,
+                    jsonData.map,
+                    players,
+                    Date.parse(jsonData.started_at),
+                    Date.parse(jsonData.updated_at)
+                )
+            }
+        }
+        /**
+         * @class Player
+         * @property id {number}
+         * @property username {string}
+         * @property teamId {number}
+         * @property rating {number}
+         * @property ratingChange {number?}
+         * @property civilization {string}
+         * @property civilizationRandom {boolean}
+         */
+        class Player {
+            constructor(id, username, teamId, rating, ratingChange,  civilization, civilizationRandom) {
+                this.id = id;
+                this.username = username;
+                this.teamId = teamId;
+                this.rating = rating;
+                this.ratingChange = ratingChange;
+                this.civilization = civilization;
+                this.civilizationRandom = civilizationRandom;
             }
 
-            return new MatchUpResults(mainPlayerId, opponentPlayerId, opponentName, games);
+            /**
+             * @param teamId {number}
+             * @param jsonData {{}}
+             * @returns {Player}
+             * @constructor
+             */
+            static FromJson(teamId, jsonData) {
+                return new Player(
+                    jsonData.profile_id,
+                    jsonData.name,
+                    teamId,
+                    jsonData.rating,
+                    jsonData.rating_diff,
+                    jsonData.civilization,
+                    jsonData.civilization_randomized,
+                )
+            }
         }
-        async function GetRecentMatchUps(playerId) {
-            const results = await GetJsonOfRecentGames(playerId, 3);
-            const matchUpResults = [];
-            for (let i = 0; i < results.games.length; i++) {
-                const gameJson = results.games[i];
-                let enemyTeam = null;
-                const teams = gameJson.teams;
-                for (let teamIndex = 0; teamIndex < teams.length; teamIndex++) {
-                    const team = teams[teamIndex];
-                    let foundMe = false;
-                    for (let innerTeamIndex = 0; innerTeamIndex < team.length; innerTeamIndex++) {
-                        const player = team[innerTeamIndex].player;
-                        if (player.profile_id === playerId) {
-                            foundMe = true;
-                            break;
-                        }
-                    }
-
-                    if (foundMe === false) {
-                        enemyTeam = team;
-                    }
-                }
-                for (let enemyTeamIndex = 0; enemyTeamIndex < enemyTeam.length; enemyTeamIndex++) {
-                    const enemyPlayer = enemyTeam[enemyTeamIndex].player;
-                    const matchUp = await GetMatchUpResults(playerId, enemyPlayer.profile_id);
-                    matchUpResults.push(matchUp);
-                }
-
+        /**
+         * @class User
+         * @property id {number}
+         * @property steamId {number}
+         * @property username {string}
+         * @property mediumAvatarImageUrl {string}
+         */
+        class User { //todo a lot more fields can be serialized out
+            constructor(id, steamId, username, mediumAvatarImageUrl) {
+                this.id = id;
+                this.steamId = steamId;
+                this.username = username;
+                this.mediumAvatarImageUrl = mediumAvatarImageUrl;
             }
 
-            return matchUpResults;
+            /**
+             * @param jsonData {{}}
+             * @returns {User}
+             * @constructor
+             */
+            static FromJson(jsonData) {
+                return new User(
+                    jsonData.profile_id,
+                    jsonData.steam_id,
+                    jsonData.name,
+                    jsonData.avatars.medium,
+                )
+            }
         }
 
-        async function CheckRecentMatchUp(playerId) {
-            const matchUpResults = await GetRecentMatchUps(playerId);
+        /**
+         * @class Aoe4WorldApiService
+         * Api services to talk to AOE4 World
+         */
+        class Aoe4WorldApiService {
+            /**
+             * @param playerId {number}
+             * @param opponentId {number=}
+             * @param limit {number=}
+             * @returns {Promise<[Game]>}
+             */
+            async getGames(playerId, opponentId = -1, limit = -1) {
+                let apiUrl = `https://aoe4world.com/api/v0/players/${playerId}/games`;
+                let queryParams = null;
+                if (limit > 0) {
+                    queryParams = new URLSearchParams();
+                    queryParams.set("limit", limit.toString());
+                }
+                if (opponentId > 0) {
+                    if (queryParams === null) {
+                        queryParams = new URLSearchParams();
+                    }
+                    queryParams.set("opponent_profile_id", opponentId.toString());
+                }
+                if (queryParams !== null) {
+                    apiUrl += "?";
+                    apiUrl += queryParams.toString();
+                }
+                const results = await fetch(apiUrl);
+                const responseJson = await results.json();
 
+                let games = [];
+                for (let i = 0; i < responseJson.games.length; i++) {
+                    const gameJson = responseJson.games[i];
+                    const game = Game.FromJson(gameJson);
+                    games.push(game);
+                }
+                return games;
+            }
+
+            /**
+             * @param playerId {number}
+             * @param game {Game}
+             * @returns {Promise<{number: [Game]}>}
+             * @constructor
+             */
+            async getMatchUpsFromGame(playerId, game) {
+                const playerTeam = game.getPlayerById(playerId).teamId;
+                const matchUpPromises = {};
+                const promises = [];
+                for (let i = 0; i < game.players.length; i++) {
+                    const opponent = game.players[i];
+                    if (opponent.teamId === playerTeam || opponent.id === playerId) {
+                        continue;
+                    }
+
+                    const matchUpGamesPromise = this.getGames(playerId, opponent.id);
+                    matchUpPromises[opponent.id] = matchUpGamesPromise;
+                    promises.push(matchUpGamesPromise);
+                }
+
+                await Promise.all(promises);
+                const keys = Object.keys(matchUpPromises);
+                for (let i = 0; i < keys.length; i++) {
+                    const key = keys[i];
+                    matchUpPromises[key] = await matchUpPromises[key];
+                }
+                return matchUpPromises;
+            }
+            /**
+             * @param username {string}
+             * @param exact {boolean=}
+             * @param limit {number=}
+             * @returns {Promise<[User]>}
+             */
+            async getUsersByUsername(username, exact, limit) {
+                let apiUrl = `https://aoe4world.com/api/v0/players/search?query=${username}`;
+                if (exact) {
+                    apiUrl += `&exact=true`;
+                }
+                if (limit && limit > 0) {
+                    apiUrl += `&limit=${limit}`;
+                }
+                const results = await fetch(apiUrl);
+                const responseJson = await results.json();
+                const users = [];
+                for (let i = 0; i < responseJson.players.length; i++) {
+                    const playerJson = responseJson.players[i];
+                    users.push(User.FromJson(playerJson));
+                }
+                return users;
+            }
+            /**
+             * @param userId {number}
+             * @returns {Promise<User>}
+             */
+            async getUsersById(userId) {
+                const apiUrl = `https://aoe4world.com/api/v0/players/${userId}`;
+                const results = await fetch(apiUrl);
+                const responseJson = await results.json();
+                return User.FromJson(responseJson);
+            }
+
+            /**
+             * @param username
+             * @returns {Promise<User|null>}
+             */
+            async attemptToFindUserByUsername(username) {
+                let users = await this.getUsersByUsername(username, true, 1);
+                if (users.length !== 0) {
+                    return users[0];
+                }
+                users = await this.getUsersByUsername(username, false, 1);
+                if (users.length !== 0) {
+                    return users[0];
+                }
+                return null;
+            }
+        }
+
+
+        /*
+        Scoped objects
+         */
+        const aoe4ApiService = new Aoe4WorldApiService();
+
+        /*
+            UI callbacks
+         */
+        /**
+         * @param mainUser {User}
+         * @param fromGame {Game}
+         * @param matchUps {{number: [Game]}}
+         */
+        function OnRenderMatchUpUI(mainUser, fromGame, matchUps) {
             let htmlResults = "";
-
-            for (let i = 0; i < matchUpResults.length; i++) {
-                const matchUp = matchUpResults[i];
-                htmlResults += `Games against ${matchUp.opponentName}:<br>`;
-                for (let gameIndex = 0; gameIndex < matchUp.games.length; gameIndex++) {
-                    const game = matchUp.games[gameIndex];
-                    htmlResults += `Game - didWin ${game.didWin} - ${game.startedAt}<br>`;
-                    htmlResults += `<a target="_blank" href="https://aoe4world.com/players/${matchUp.mainPlayerId}/games/${game.id}">Game data</a><br>`;
+            const mainPlayer = fromGame.getPlayerById(mainUser.id);
+            for (let i = 0; i < fromGame.players.length; i++) {
+                const opponent = fromGame.players[i];
+                if (opponent.teamId === mainPlayer.teamId || opponent.id === mainPlayer.id) {
+                    continue;
+                }
+                const matchUpGames = matchUps[opponent.id];
+                htmlResults += `Games against ${opponent.username}:<br>`;
+                if (matchUpGames === undefined || matchUpGames === null) {
+                    htmlResults += `-<br>`;
+                    continue;
+                }
+                for (let gameIndex = 0; gameIndex < matchUpGames.length; gameIndex++) {
+                    const game = matchUpGames[gameIndex];
+                    const myPlayerInGame = game.getPlayerById(mainUser.id);
+                    htmlResults += `Game - didWin ${game.teamIdWon === myPlayerInGame.teamId} - ${game.startedAt}<br>`;
+                    htmlResults += `<a target="_blank" href="https://aoe4world.com/players/${mainUser.id}/games/${game.id}">Game data</a><br>`;
                 }
                 htmlResults += "<br><br><br>";
             }
 
             winResultsDiv.innerHTML = htmlResults;
         }
-        async function CheckRecentMatchUpByUserName(username) {
-            const userJson = await FindUserByUsername(username);
-            CheckRecentMatchUp(userJson.profile_id);
-        }
 
+
+        /*
+            Page routing
+         */
+        async function RouteFindMatchUpsWithUsername(username) {
+            const user = await aoe4ApiService.attemptToFindUserByUsername(username);
+            RouteFindMatchUpsWithUser(user);
+        }
+        async function RouteFindMatchUpsWithId(userId) {
+            const user = await aoe4ApiService.getUsersById(userId);
+            RouteFindMatchUpsWithUser(user);
+        }
+        async function RouteFindMatchUpsWithUser(user) {
+            const recentGames = await aoe4ApiService.getGames(user.id, -1, 1);
+            const recentGame = recentGames[0];
+            const matchUps = await aoe4ApiService.getMatchUpsFromGame(user.id, recentGame);
+            OnRenderMatchUpUI(user, recentGame, matchUps);
+        }
         async function CheckCustomId() {
-            CheckRecentMatchUp(parseInt(customIdInput.value));
+            RouteFindMatchUpsWithId(parseInt(customIdInput.value));
         }
-
 
         if (userIdToUse !== null) {
-            CheckRecentMatchUp(parseInt(userIdToUse));
+            RouteFindMatchUpsWithId(parseInt(userIdToUse));
         } else if (userNameToLookUp !== null) {
-            CheckRecentMatchUpByUserName(userNameToLookUp);
+            RouteFindMatchUpsWithUsername(userNameToLookUp);
         }
     </script>
 </html>
