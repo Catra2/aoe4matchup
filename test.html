@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html class="scroll-pt-24" lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AOE4 Grudge Finder</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous" />
+    <link rel="stylesheet" href="style1.css" />
+  </head>
+  <body>
+    <div class="container text-center">
+      <div class="row">
+        <div class="col g-5">
+          <div class="btn-group" role="group" aria-label="Basic example">
+            <button type="button" class="btn btn-primary" id="btn-krtko" onclick="KrtkoButton();">Krtko</button>
+            <button type="button" class="btn btn-primary" onclick="KrtkoButton();">Walrus</button>
+            <button type="button" class="btn btn-primary" onclick="KrtkoButton();">Goblingoo</button>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col g-2">
+          <input type="text" placeholder="Search players..." class="rounded bg-dark text-light" autofocus />
+          <button type="button" class="btn btn-primary" onclick="KrtkoButton();">Search</button>
+        </div>
+      </div>
+      <div class="row g-2 mt-4 text-light">
+        <div class="col"><i class="fas text-xl mr-4 fa-clock-rotate-left" aria-hidden="true"></i> Recent Games</div>
+      </div>
+    </div>
+    <div class="container text-center text-break" id="container-results">
+      <div class="row justify-content-center pt-2">
+        <div class="row row-cols-5 rounded-top-4 bg-dark text-light p-2 d-flex align-items-center">
+          <div class="col" id="main-results-civ1"><img alt="HRE" style="width: 40px" src="https://static.aoe4world.com/assets/flags/english-8c6c905d0eb11d6d314b9810b2a0b9c09eec69afb38934f55b329df36468daf2.png" title="Holy Roman Empire" /></div>
+          <div class="col" id="main-results-player1">Chuck Norris Likes To Bone Your Mom Endlessly Just Like This Name Does To Your Web Browser</div>
+          <div class="col">vs</div>
+          <div class="col" id="main-results-player4">Player 4</div>
+          <div class="col" id="main-results-civ2"><img alt="HRE" style="width: 40px" src="hr.png" title="Holy Roman Empire" /></div>
+        </div>
+        <div class="row row-cols-5 bg-dark text-light p-2 d-flex align-items-center">
+          <div class="col" id="main-results-civ1"><img alt="HRE" style="width: 40px" src="hr.png" title="Holy Roman Empire" /></div>
+          <div class="col" id="main-results-player1">Player 1</div>
+          <div class="col"></div>
+          <div class="col" id="main-results-player4">Chuck Norris Likes To Bone Your Mom Endlessly Just Like This Name Does To Your Web Browser</div>
+          <div class="col" id="main-results-civ2"><img alt="HRE" style="width: 40px" src="hr.png" title="Holy Roman Empire" /></div>
+        </div>
+      </div>
+      <div class="row justify-content-center rounded-bottom-4 bg-dark text-light text-opacity-50 pb-2">
+        <div class="col" id="matched-recently-timer">(Matched 1m ago)</div>
+      </div>
+    </div>
+    <div id="div-test"></div>
+  </body>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm" crossorigin="anonymous"></script>
+  <script src="https://kit.fontawesome.com/be44f2e5df.js" crossorigin="anonymous"></script>
+  <script>
+    const playerName = "test";
+    // UI controller code
+    function KrtkoButton() {
+      console.log("Krtko pressed");
+      document.querySelector("#main-results-player1").innerHTML = `${playerName}`;
+    }
+  </script>
+
+  <script>
+    // delete me test script
+
+
+    let htmlResults = "";
+    for (let i=0; i<10; i++) {
+      htmlResults += '<img alt="HRE" style="width: 40px" src="https://static.aoe4world.com/assets/flags/english-8c6c905d0eb11d6d314b9810b2a0b9c09eec69afb38934f55b329df36468daf2.png" title="Holy Roman Empire" />';
+    }
+   document.querySelector("#div-test").innerHTML = htmlResults;
+
+  </script>
+</html>
