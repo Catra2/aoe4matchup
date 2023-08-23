@@ -5,6 +5,8 @@
 const queryParams = new URLSearchParams(document.location.search);
 const userNameToLookUp = queryParams.get("u");
 const userIdToUse = queryParams.get("u_id");
+const userIdToMatchAgainst = queryParams.get("gu_id");
+const userNameToMatchAgainst = queryParams.get("gu");
 
 const winResultsDiv = document.querySelector("#win-results");
 const customIdInput = document.querySelector("#custom-id-input");
@@ -456,6 +458,27 @@ function OnRenderMatchUpUI(mainUser, fromGame, matchUps) {
 /*
             Page routing
          */
+async function RouteFindGrudge(userId, username, grudgeId, grudgeUsername) {
+  let userRequest = null;
+  let grudgeRequest = null;
+  if (userId !== null) {
+    userRequest = aoe4ApiService.getUsersById(userId);
+  } else if (username !== null) {
+    userRequest = aoe4ApiService.attemptToFindUserByUsername(username);
+  } else {
+    throw new Error("You must provide a userId or username");
+  }
+  if (grudgeId !== null) {
+    grudgeRequest = aoe4ApiService.getUsersById(grudgeId);
+  } else if (grudgeUsername !== null) {
+    grudgeRequest = aoe4ApiService.attemptToFindUserByUsername(grudgeUsername);
+  } else {
+    throw new Error("You must provide a userId or username");
+  }
+  const user = await userRequest;
+  const grudge = await grudgeRequest;
+  RouteFindMatchUpsWithUserAgainstUser(user, grudge);
+}
 async function RouteFindMatchUpsWithUsername(username) {
   const user = await aoe4ApiService.attemptToFindUserByUsername(username);
   RouteFindMatchUpsWithUser(user);
@@ -479,11 +502,26 @@ async function RouteFindMatchUpsWithUser(user) {
   const matchUps = await aoe4ApiService.getMatchUpsFromGame(user.id, recentGame);
   OnRenderMatchUpUI(user, recentGame, matchUps);
 }
+async function RouteFindMatchUpsWithUserAgainstUser(user, grudge) {
+  const recentGames = await aoe4ApiService.getGames(user.id, grudge.id);
+  if (recentGames.length === 0) {
+    winResultsDiv.innerHTML = "NO RESULTS";
+    return;
+  }
+  const recentGame = recentGames[0];
+  const matchUps = { };
+  matchUps[grudge.id] = recentGames;
+  OnRenderMatchUpUI(user, recentGame, matchUps);
+}
 async function CheckCustomId() {
   RouteFindMatchUpsWithId(parseInt(customIdInput.value));
 }
 
-if (userIdToUse !== null) {
+const hasUserDeepLink = userIdToUse !== null || userNameToLookUp !== null;
+const hasGrudgeDeepLink = userIdToMatchAgainst !== null || userNameToMatchAgainst !== null;
+if (hasUserDeepLink && hasGrudgeDeepLink) {
+  RouteFindGrudge(userIdToUse, userNameToLookUp, userIdToMatchAgainst, userNameToMatchAgainst);
+} else if (userIdToUse !== null) {
   RouteFindMatchUpsWithId(parseInt(userIdToUse));
 } else if (userNameToLookUp !== null) {
   RouteFindMatchUpsWithUsername(userNameToLookUp);
